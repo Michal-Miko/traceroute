@@ -56,8 +56,12 @@ ssize_t sendICMPPacket(const std::string &ip_addr,
     setsockopt(socket, IPPROTO_IP, IP_TTL, &ttl, sizeof(int));
 
     // Send packet
-    ssize_t bytes_sent =
-      sendto(socket, &header, sizeof(header), 0, (struct sockaddr *)&recipient, sizeof(recipient));
+    ssize_t bytes_sent = sendto(socket,
+                                &header,
+                                sizeof(header),
+                                0,
+                                (struct sockaddr *)&recipient,
+                                sizeof(recipient));
 
     return bytes_sent;
 }
@@ -119,7 +123,7 @@ trace_response pingRouters(const std::string &ip_addr, unsigned short ttl, const
         while(packet_len > 0) {
             time_now = std::chrono::steady_clock::now();
             time_passed =
-              std::chrono::duration_cast<std::chrono::microseconds>(time_now - send_time).count();
+            std::chrono::duration_cast<std::chrono::microseconds>(time_now - send_time).count();
 
             // Get sender ip addr
             char sender_ip_str[20];
@@ -131,6 +135,12 @@ trace_response pingRouters(const std::string &ip_addr, unsigned short ttl, const
             u_int8_t *icmp_packet = buffer + ip_header_len;
             struct icmp *icmp_header = (struct icmp *)icmp_packet;
             ssize_t icmp_header_len = 8;
+
+            // Type 8 - loopback (form localhost, etc.)
+            bool skip = false;
+            if(icmp_header->icmp_type == 8) {
+                skip = true;
+            }
 
             // Type 11 - TTL exceeded, extract the original request IP, ICMP data
             if(icmp_header->icmp_type == 11) {
@@ -147,7 +157,7 @@ trace_response pingRouters(const std::string &ip_addr, unsigned short ttl, const
             uint16_t seq_ttl = seq >> 2;
 
             // Check if packet is a response to one of the last 3 requests
-            if(id == pid && seq_ttl == ttl) {
+            if(id == pid && seq_ttl == ttl && !skip) {
                 std::string newip = sender_ip_str;
                 // Check if the current ip addr is a new one
                 bool unique = true;
