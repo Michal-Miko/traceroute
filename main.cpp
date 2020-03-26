@@ -1,67 +1,61 @@
-#include "utils.h"
+// Michał Mikołajczyk
+// 307371
+// 2020-03-26
+
+#include "traceroute.h"
 #include <arpa/inet.h>
-#include <cerrno>
-#include <cstring>
+#include <iomanip>
 #include <iostream>
-#include <netinet/in.h>
-#include <netinet/ip.h>
-#include <sys/socket.h>
-#include <sys/types.h>
+#include <netinet/ip_icmp.h>
 #include <unistd.h>
 
+int main(int argc, char *argv[]) {
+    // Buffer for ip addr validation
+    unsigned char buf[sizeof(struct in6_addr)];
+    if(argc != 2) {
+        std::cerr << "Error: wrong number of arguments.\nExample "
+                     "usage (required root privileges):\n\ttraceroute 127.0.0.1\n";
+        return -1;
+    }
+    if(inet_pton(AF_INET, argv[1], buf) == 0) {
+        std::cerr << "Error: invalid ip address: " << argv[1] << ". Pass an ipv4 address.\n";
+        return -1;
+    }
+    if(getuid()) {
+        std::cerr << "Error: you cannot perform this operation unless you are root.\n";
+        return -1;
+    }
 
-int main() {
     // Set up raw socket
     int icmpsocket = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
 
-    struct sockaddr_in sender;
-    socklen_t sender_len = sizeof(sender);
-    u_int8_t buffer[IP_MAXPACKET];
+    bool reached_target = false;
+    for(int i = 1; i <= 30 && !reached_target; ++i) {
+        auto responses = pingRouters(argv[1], i, icmpsocket);
+        std::cout << i << ". ";
 
-    // Get PID for use in ICMP headers as unique id
-    /* const int pid = getpid(); */
+        // No responses
+        if(responses.response_count == 0)
+            std::cout << "*\n";
+        else {
+            // List ip addresses
+            for(unsigned j = 0; j < responses.ip_count; ++j) {
+                std::cout << responses.ip_addr[j] << " ";
+                // Check if the target ip_addr has been reached
+                if(responses.ip_addr[j].compare(argv[1]) == 0)
+                    reached_target = true;
+            }
 
-    bool recieving = true;
-    while(recieving) {
-        // Recieve a packet from the socket's queue
-        ssize_t packet_len = recvfrom(icmpsocket,
-                                      buffer,
-                                      IP_MAXPACKET,
-                                      0,
-                                      (struct sockaddr *)&sender,
-                                      &sender_len);
-
-        if(packet_len < 0)
-            std::cerr << "recvfrom error: " << std::strerror(errno);
-
-        // Get ip addr as string
-        char sender_ip_str[20];
-        inet_ntop(AF_INET,
-                  &(sender.sin_addr),
-                  sender_ip_str,
-                  sizeof(sender_ip_str));
-
-        // Get icmp header
-        struct ip *ip_header = (struct ip *)buffer;
-        ssize_t ip_header_len = 4 * ip_header->ip_hl;
-        /* u_int8_t *icmp_packet = buffer + 4 * ip_header_len; */
-        /* struct icmp *icmp_header = (struct icmp *)icmp_packet; */
-
-        // Print out data
-        std::cout << "===========================\n"
-                  << "Recieved IP packet with ICMP content from: "
-                  << sender_ip_str << "\n"
-                  << "----------\n"
-                     "IP Header:\n";
-
-        printBytes(buffer, ip_header_len);
-
-        std::cout << "----------\n"
-                     "IP Data:\n";
-
-        printBytes(buffer + ip_header_len, packet_len - ip_header_len);
-
-        std::cout << "===========================\n";
+            // Not all requests got a response
+            if(responses.response_count < 3)
+                std::cout << "???\n";
+            else {
+                auto avg = (responses.response_times[0] + responses.response_times[1] +
+                            responses.response_times[2]) /
+                           3.0;
+                std::cout << std::fixed << std::setprecision(2) << avg << "ms\n";
+            }
+        }
     }
     return 0;
 }
