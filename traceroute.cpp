@@ -84,10 +84,9 @@ trace_response pingRouters(const std::string &ip_addr, unsigned short ttl, const
     // Save request send time
     auto send_time = std::chrono::steady_clock::now();
     auto time_now = std::chrono::steady_clock::now();
-    auto time_passed =
-      std::chrono::duration_cast<std::chrono::microseconds>(time_now - send_time).count();
+    auto time_passed = 0; // microseconds
 
-    // Check for requests until there are 3 responses or more than 1s has passed
+    // Check for responses until there are 3 or more than 1s has passed
     while(responses.response_count < 3 && time_passed < 1000000) {
         // Select setup
         fd_set descriptors;
@@ -100,7 +99,7 @@ trace_response pingRouters(const std::string &ip_addr, unsigned short ttl, const
 
         // Check for select error / timeout
         if(ready < 0) {
-            std::cerr << "ERROR Select\n";
+            std::cerr << "Error: select\n";
             return responses;
         } else if(ready == 0) {
             /* std::cerr << "Timeout, not enough responses.\n"; */
@@ -173,7 +172,7 @@ trace_response pingRouters(const std::string &ip_addr, unsigned short ttl, const
         } // End of queue loop
 
         if(packet_len < 0 && errno != EWOULDBLOCK)
-            std::cerr << "recvfrom error: " << std::strerror(errno) << '\n';
+            std::cerr << "Error: recvfrom, msg: " << std::strerror(errno) << '\n';
     } // End of select loop
 
     return responses;
